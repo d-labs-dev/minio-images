@@ -1,0 +1,97 @@
+name: Publish MinIO
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  legacy:
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish legacy MinIO
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: build/minio/legacy-2020
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/minio:RELEASE.2020-10-28T08-16-50Z-51-g7fdffa036
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+  server:
+    needs: legacy
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish MinIO server
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: build/minio/server-2025
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/minio:RELEASE.2025-09-07T16-13-09Z
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+  mc:
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish MinIO client
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: build/minio/mc-2025
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/minio-mc:RELEASE.2025-08-13T08-35-41Z
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+  summary:
+    runs-on: ubuntu-latest
+    needs: [legacy, server, mc]
+    steps:
+      - name: Report published image digests
+        env:
+          LEGACY_DIGEST: ${{ needs.legacy.outputs.digest }}
+          SERVER_DIGEST: ${{ needs.server.outputs.digest }}
+          MC_DIGEST: ${{ needs.mc.outputs.digest }}
+        run: |
+          echo 'Published MinIO images:'
+          echo "ghcr.io/${GITHUB_REPOSITORY_OWNER}/minio:RELEASE.2020-10-28T08-16-50Z-51-g7fdffa036 @ ${LEGACY_DIGEST}"
+          echo "ghcr.io/${GITHUB_REPOSITORY_OWNER}/minio:RELEASE.2025-09-07T16-13-09Z @ ${SERVER_DIGEST}"
+          echo "ghcr.io/${GITHUB_REPOSITORY_OWNER}/minio-mc:RELEASE.2025-08-13T08-35-41Z @ ${MC_DIGEST}"
